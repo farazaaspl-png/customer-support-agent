@@ -21,6 +21,9 @@ CHAT_MODEL = "gpt-4o-mini"
 
 MAX_RETRIES = 3
 
+# Postgres schema for all app tables
+DB_SCHEMA = os.getenv("DB_SCHEMA", "customer_support_agent")
+
 # Conversation context management
 MAX_CONTEXT_MESSAGES = 10   # messages sent to LLM per turn
 SUMMARIZE_THRESHOLD = 20    # auto-summarize older messages when count exceeds this

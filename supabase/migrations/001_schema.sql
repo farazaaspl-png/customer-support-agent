@@ -1,5 +1,6 @@
 -- Customer Support AI Agent - Database Schema
--- Run this in Supabase SQL Editor or via supabase db push
+-- Tables are created in public first; run 004 to move to customer_support_agent schema.
+-- Fresh installs: run 001 → 002 → 003 → 004
 
 -- Enable pgvector for semantic search (128-dim embeddings)
 CREATE EXTENSION IF NOT EXISTS vector;

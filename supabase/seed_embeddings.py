@@ -7,9 +7,12 @@ Run after applying migrations: python supabase/seed_embeddings.py
 import os
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 from dotenv import load_dotenv
 from openai import OpenAI
-from supabase import create_client
+
+from ai.db import get_conn
 
 load_dotenv()
 
@@ -18,22 +21,20 @@ EMBEDDING_DIMENSIONS = 128
 
 
 def main() -> None:
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     openai_key = os.environ.get("OPENAI_API_KEY")
-
-    if not all([url, key, openai_key]):
-        print("Set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and OPENAI_API_KEY in .env")
+    if not openai_key:
+        print("Set OPENAI_API_KEY and DATABASE_URL in .env")
         sys.exit(1)
 
-    supabase = create_client(url, key)
     openai = OpenAI(api_key=openai_key)
 
-    result = supabase.table("knowledge_base").select("id, title, content").execute()
-    docs = result.data or []
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, title, content FROM knowledge_base")
+            docs = cur.fetchall()
 
     if not docs:
-        print("No knowledge_base documents found. Run 002_sample_data.sql first.")
+        print("No knowledge_base documents found. Run migrations first.")
         sys.exit(1)
 
     for doc in docs:
@@ -45,9 +46,12 @@ def main() -> None:
         )
         embedding = response.data[0].embedding
 
-        supabase.table("knowledge_base").update({"embedding": embedding}).eq(
-            "id", doc["id"]
-        ).execute()
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE knowledge_base SET embedding = %s::vector WHERE id = %s",
+                    (str(embedding), doc["id"]),
+                )
         print(f"Embedded: {doc['title']}")
 
     print(f"Done. Embedded {len(docs)} documents.")

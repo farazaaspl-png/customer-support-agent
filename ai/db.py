@@ -1,20 +1,31 @@
 """Direct Postgres access via DATABASE_URL (works without Supabase API keys)."""
 
-import json
 import os
+import re
 from contextlib import contextmanager
 from typing import Any, Optional
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from ai.config import DB_SCHEMA
+
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+
+def _validate_schema(name: str) -> str:
+    if not re.match(r"^[a-z_][a-z0-9_]*$", name):
+        raise ValueError(f"Invalid schema name: {name}")
+    return name
 
 
 @contextmanager
 def get_conn():
+    schema = _validate_schema(DB_SCHEMA)
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     try:
+        with conn.cursor() as cur:
+            cur.execute(f"SET search_path TO {schema}, public")
         yield conn
         conn.commit()
     except Exception:
