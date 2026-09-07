@@ -6,6 +6,7 @@ from typing import Any, Optional
 from langchain_core.messages import HumanMessage
 
 from ai.graph import get_graph
+from ai.langfuse_tracing import build_run_config, flush_langfuse, langfuse_trace
 from ai.state import AgentState
 
 
@@ -25,7 +26,7 @@ def _default_state(message: str, thread_id: str) -> dict:
 
 
 def _config(thread_id: str) -> dict:
-    return {"configurable": {"thread_id": thread_id}}
+    return build_run_config(thread_id)
 
 
 def run_chat(message: str, thread_id: Optional[str] = None) -> dict[str, Any]:
@@ -36,10 +37,10 @@ def run_chat(message: str, thread_id: Optional[str] = None) -> dict[str, Any]:
     """
     graph = get_graph()
     thread_id = thread_id or str(uuid.uuid4())
-    config = _config(thread_id)
 
     try:
-        result = graph.invoke(_default_state(message, thread_id), config)
+        with langfuse_trace(thread_id, message) as config:
+            result = graph.invoke(_default_state(message, thread_id), config)
     except Exception as e:
         return {
             "thread_id": thread_id,
@@ -48,6 +49,8 @@ def run_chat(message: str, thread_id: Optional[str] = None) -> dict[str, Any]:
             "pending_refund": None,
             "intent": None,
         }
+    finally:
+        flush_langfuse()
 
     # Check if graph is paused at HITL interrupt
     state_snapshot = graph.get_state(config)
@@ -99,13 +102,16 @@ def resume_after_hitl(thread_id: str) -> dict[str, Any]:
         }
 
     try:
-        result = graph.invoke(None, config)
+        with langfuse_trace(thread_id, "hitl_resume") as trace_config:
+            result = graph.invoke(None, trace_config)
     except Exception as e:
         return {
             "thread_id": thread_id,
             "response": f"Resume failed: {e}",
             "agent_status": "error",
         }
+    finally:
+        flush_langfuse()
 
     return {
         "thread_id": thread_id,

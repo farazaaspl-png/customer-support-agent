@@ -22,6 +22,22 @@ def _get_openai() -> OpenAI:
 
 def embed_text(text: str) -> list[float]:
     """Generate a 128-dimension embedding for the given text."""
+    from ai.langfuse_tracing import is_langfuse_enabled
+
+    if is_langfuse_enabled():
+        from langfuse import observe
+
+        @observe(name="embed_text", as_type="embedding")
+        def _embed(input_text: str) -> list[float]:
+            response = _get_openai().embeddings.create(
+                model=EMBEDDING_MODEL,
+                input=input_text,
+                dimensions=EMBEDDING_DIMENSIONS,
+            )
+            return response.data[0].embedding
+
+        return _embed(text)
+
     response = _get_openai().embeddings.create(
         model=EMBEDDING_MODEL,
         input=text,
