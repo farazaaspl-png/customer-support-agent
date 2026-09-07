@@ -1,6 +1,8 @@
 # Customer Support AI Agent
 
-A learning project that demonstrates **10 LangGraph concepts** through a realistic customer-support chatbot. Users can ask about orders, refunds, returns, and company policies.
+A LangGraph learning project — customer support chatbot with RAG, tool calling, and human-in-the-loop refunds.
+
+**→ [How to run the project](RUNNING.md)**
 
 ## Architecture
 
