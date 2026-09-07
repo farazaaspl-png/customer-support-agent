@@ -20,3 +20,7 @@ EMBEDDING_DIMENSIONS = 128
 CHAT_MODEL = "gpt-4o-mini"
 
 MAX_RETRIES = 3
+
+# Conversation context management
+MAX_CONTEXT_MESSAGES = 10   # messages sent to LLM per turn
+SUMMARIZE_THRESHOLD = 20    # auto-summarize older messages when count exceeds this

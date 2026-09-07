@@ -12,6 +12,7 @@ export interface ChatResponse {
   response: string;
   agent_status: AgentStatus;
   intent?: string;
+  title?: string;
   pending_refund?: {
     order_number: string;
     customer_email: string;
@@ -19,6 +20,23 @@ export interface ChatResponse {
     amount?: number;
     status: string;
   };
+}
+
+export interface Session {
+  id: string;
+  thread_id: string;
+  title: string;
+  message_count: number;
+  summary?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoredMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
 }
 
 export async function sendMessage(
@@ -31,6 +49,22 @@ export async function sendMessage(
     body: JSON.stringify({ message, thread_id: threadId }),
   });
   if (!res.ok) throw new Error(`Chat failed: ${res.statusText}`);
+  return res.json();
+}
+
+export async function listSessions(): Promise<Session[]> {
+  const res = await fetch(`${API_URL}/api/sessions`);
+  if (!res.ok) throw new Error(`Failed to load sessions: ${res.statusText}`);
+  return res.json();
+}
+
+export async function loadSessionMessages(threadId: string): Promise<{
+  thread_id: string;
+  title: string;
+  messages: StoredMessage[];
+}> {
+  const res = await fetch(`${API_URL}/api/sessions/${threadId}/messages`);
+  if (!res.ok) throw new Error(`Failed to load messages: ${res.statusText}`);
   return res.json();
 }
 

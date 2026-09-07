@@ -21,6 +21,7 @@ class ChatResponse(BaseModel):
     agent_status: str
     intent: Optional[str] = None
     pending_refund: Optional[dict] = None
+    title: Optional[str] = None
 
 
 @router.post("/chat", response_model=ChatResponse)

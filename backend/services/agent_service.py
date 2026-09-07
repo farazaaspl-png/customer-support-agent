@@ -5,14 +5,23 @@ from typing import Any, Optional
 
 from langchain_core.messages import HumanMessage
 
+from ai import conversation as conv
 from ai.graph import get_graph
 from ai.langfuse_tracing import build_run_config, flush_langfuse, langfuse_trace
 from ai.state import AgentState
 
 
-def _default_state(message: str, thread_id: str) -> dict:
+def _state_from_session(session: dict, new_message: str) -> dict:
+    """Build agent state using DB history (efficient context window)."""
+    messages = conv.build_langchain_messages(session)
+    # Ensure the latest user message is included (just saved to DB)
+    if not messages or not (
+        isinstance(messages[-1], HumanMessage) and messages[-1].content == new_message
+    ):
+        messages.append(HumanMessage(content=new_message))
+
     return {
-        "messages": [HumanMessage(content=message)],
+        "messages": messages,
         "intent": "",
         "customer_email": None,
         "order_number": None,
@@ -32,15 +41,23 @@ def _config(thread_id: str) -> dict:
 def run_chat(message: str, thread_id: Optional[str] = None) -> dict[str, Any]:
     """
     Run the agent graph for a user message.
-    Returns response text, agent_status, and thread_id.
-    If HITL is triggered, agent_status will be 'waiting_for_human'.
+    Persists messages to DB and uses context window management for long chats.
     """
     graph = get_graph()
-    thread_id = thread_id or str(uuid.uuid4())
+    session = conv.get_or_create_session(thread_id, first_message=message)
+    thread_id = session["thread_id"]
+
+    # Persist user message
+    conv.save_message(session["id"], "user", message)
+    if session["message_count"] == 0:
+        conv.touch_session(session["id"], conv._title_from_message(message))
+
+    # Refresh session (message_count updated)
+    session = conv.get_session_by_thread(thread_id)
 
     try:
         with langfuse_trace(thread_id, message) as config:
-            result = graph.invoke(_default_state(message, thread_id), config)
+            result = graph.invoke(_state_from_session(session, message), config)
     except Exception as e:
         return {
             "thread_id": thread_id,
@@ -48,21 +65,30 @@ def run_chat(message: str, thread_id: Optional[str] = None) -> dict[str, Any]:
             "agent_status": "error",
             "pending_refund": None,
             "intent": None,
+            "title": session["title"],
         }
     finally:
         flush_langfuse()
 
-    # Check if graph is paused at HITL interrupt
     state_snapshot = graph.get_state(config)
     is_interrupted = bool(state_snapshot.next)
+    response_text = result.get("response", "")
+
+    # Persist assistant response
+    if response_text:
+        conv.save_message(session["id"], "assistant", response_text)
+
+    conv.touch_session(session["id"])
+    conv.maybe_summarize(session["id"])
 
     return {
         "thread_id": thread_id,
-        "response": result.get("response", ""),
+        "response": response_text,
         "agent_status": "waiting_for_human" if is_interrupted else result.get("agent_status", "completed"),
         "pending_refund": result.get("pending_refund"),
         "intent": result.get("intent"),
         "rag_context": result.get("rag_context"),
+        "title": session["title"],
     }
 
 
@@ -113,9 +139,15 @@ def resume_after_hitl(thread_id: str) -> dict[str, Any]:
     finally:
         flush_langfuse()
 
+    response_text = result.get("response", "")
+    session = conv.get_session_by_thread(thread_id)
+    if session and response_text:
+        conv.save_message(session["id"], "assistant", response_text)
+        conv.touch_session(session["id"])
+
     return {
         "thread_id": thread_id,
-        "response": result.get("response", ""),
+        "response": response_text,
         "agent_status": result.get("agent_status", "completed"),
         "pending_refund": result.get("pending_refund"),
     }
@@ -127,17 +159,22 @@ def get_thread_state(thread_id: str) -> dict[str, Any]:
     config = _config(thread_id)
     snapshot = graph.get_state(config)
 
-    if not snapshot.values:
+    session = conv.get_session_by_thread(thread_id)
+
+    if not snapshot.values and not session:
         return {"error": "Thread not found"}
+
+    db_messages = conv.get_all_messages(session["id"]) if session else []
 
     return {
         "thread_id": thread_id,
-        "agent_status": snapshot.values.get("agent_status"),
-        "intent": snapshot.values.get("intent"),
-        "pending_refund": snapshot.values.get("pending_refund"),
+        "title": session["title"] if session else None,
+        "agent_status": snapshot.values.get("agent_status") if snapshot.values else "completed",
+        "intent": snapshot.values.get("intent") if snapshot.values else None,
+        "pending_refund": snapshot.values.get("pending_refund") if snapshot.values else None,
         "is_interrupted": bool(snapshot.next),
         "messages": [
-            {"role": type(m).__name__, "content": m.content}
-            for m in snapshot.values.get("messages", [])
+            {"role": m["role"], "content": m["content"]}
+            for m in db_messages
         ],
     }
