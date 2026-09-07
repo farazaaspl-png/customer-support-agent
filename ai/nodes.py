@@ -212,41 +212,25 @@ def refund_execute(state: AgentState) -> dict:
         }
 
     try:
-        from supabase import create_client
-        from ai.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+        from ai import db as pg
 
-        sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-        customer = (
-            sb.table("customers")
-            .select("id")
-            .eq("email", pending.get("customer_email", "").lower())
-            .maybe_single()
-            .execute()
-        )
-        order = (
-            sb.table("orders")
-            .select("id, total_amount")
-            .eq("order_number", pending.get("order_number", "").upper())
-            .maybe_single()
-            .execute()
+        order_id, customer_id, amount = pg.get_order_and_customer_ids(
+            pending.get("order_number", ""),
+            pending.get("customer_email", ""),
         )
 
-        if order.data and customer.data:
-            sb.table("refund_requests").insert(
-                {
-                    "order_id": order.data["id"],
-                    "customer_id": customer.data["id"],
-                    "amount": pending.get("amount") or order.data["total_amount"],
-                    "reason": pending.get("reason", ""),
-                    "status": "approved",
-                    "approved_by": pending.get("approved_by", "human_agent"),
-                }
-            ).execute()
+        if order_id and customer_id:
+            pg.insert_refund_request(
+                order_id,
+                customer_id,
+                pending.get("amount") or amount or 0,
+                pending.get("reason", ""),
+                pending.get("approved_by", "human_agent"),
+            )
 
         response_text = (
             f"✅ Refund approved and processed for order **{pending.get('order_number')}**.\n"
-            f"You will receive ${pending.get('amount', 'the full amount')} back within 5-7 business days."
+            f"You will receive ${pending.get('amount', amount or 'the full amount')} back within 5-7 business days."
         )
     except Exception as e:
         response_text = f"Refund approved but encountered an error saving: {e}"

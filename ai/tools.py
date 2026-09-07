@@ -10,36 +10,17 @@ from typing import Optional
 
 from langchain_core.tools import tool
 
-from ai.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
-
-# Lazy Supabase client to avoid import errors when env is unset
-_supabase = None
-
-
-def _get_supabase():
-    global _supabase
-    if _supabase is None:
-        from supabase import create_client
-
-        _supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-    return _supabase
+from ai import db as pg
 
 
 @tool
 def lookup_order(order_number: str) -> str:
     """Look up an order by order number (e.g. ORD-1001). Returns status, items, and total."""
     try:
-        sb = _get_supabase()
-        result = (
-            sb.table("orders")
-            .select("order_number, status, total_amount, items, created_at, customers(name, email)")
-            .eq("order_number", order_number.upper())
-            .single()
-            .execute()
-        )
-        if not result.data:
+        data = pg.lookup_order(order_number)
+        if not data:
             return json.dumps({"error": f"Order {order_number} not found"})
-        return json.dumps(result.data, default=str)
+        return json.dumps(data, default=str)
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -48,17 +29,10 @@ def lookup_order(order_number: str) -> str:
 def lookup_customer(email: str) -> str:
     """Look up a customer by email address. Returns name and recent orders."""
     try:
-        sb = _get_supabase()
-        result = (
-            sb.table("customers")
-            .select("name, email, orders(order_number, status, total_amount)")
-            .eq("email", email.lower())
-            .single()
-            .execute()
-        )
-        if not result.data:
+        data = pg.lookup_customer(email)
+        if not data:
             return json.dumps({"error": f"Customer {email} not found"})
-        return json.dumps(result.data, default=str)
+        return json.dumps(data, default=str)
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -69,43 +43,8 @@ def create_support_ticket(
 ) -> str:
     """Create a support ticket for a customer. Optionally link to an order."""
     try:
-        sb = _get_supabase()
-        customer = (
-            sb.table("customers")
-            .select("id")
-            .eq("email", customer_email.lower())
-            .single()
-            .execute()
-        )
-        if not customer.data:
-            return json.dumps({"error": f"Customer {customer_email} not found"})
-
-        order_id = None
-        if order_number:
-            order = (
-                sb.table("orders")
-                .select("id")
-                .eq("order_number", order_number.upper())
-                .single()
-                .execute()
-            )
-            if order.data:
-                order_id = order.data["id"]
-
-        ticket = (
-            sb.table("support_tickets")
-            .insert(
-                {
-                    "customer_id": customer.data["id"],
-                    "order_id": order_id,
-                    "subject": subject,
-                    "description": description,
-                    "status": "open",
-                }
-            )
-            .execute()
-        )
-        return json.dumps({"success": True, "ticket_id": ticket.data[0]["id"]})
+        result = pg.create_support_ticket(customer_email, subject, description, order_number)
+        return json.dumps(result, default=str)
     except Exception as e:
         return json.dumps({"error": str(e)})
 
