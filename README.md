@@ -2,7 +2,8 @@
 
 A LangGraph learning project — customer support chatbot with RAG, tool calling, and human-in-the-loop refunds.
 
-**→ [How to run the project](RUNNING.md)**
+**→ [How to run the project](RUNNING.md)**  
+**→ [LangGraph concepts map](LANGGRAPH_CONCEPTS.md)**
 
 ## Architecture
 
