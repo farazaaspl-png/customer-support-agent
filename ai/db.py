@@ -11,6 +11,7 @@ from psycopg2.extras import RealDictCursor
 from ai.config import DB_SCHEMA
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+DATABASE_URL_READONLY = os.getenv("DATABASE_URL_READONLY", DATABASE_URL)
 
 
 def _validate_schema(name: str) -> str:
@@ -20,9 +21,9 @@ def _validate_schema(name: str) -> str:
 
 
 @contextmanager
-def get_conn():
+def _connect(url: str):
     schema = _validate_schema(DB_SCHEMA)
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    conn = psycopg2.connect(url, cursor_factory=RealDictCursor)
     try:
         with conn.cursor() as cur:
             cur.execute(f"SET search_path TO {schema}, public")
@@ -35,8 +36,22 @@ def get_conn():
         conn.close()
 
 
+@contextmanager
+def get_read_conn():
+    """Read-only connection (customer_support_readonly role)."""
+    with _connect(DATABASE_URL_READONLY) as conn:
+        yield conn
+
+
+@contextmanager
+def get_conn():
+    """Write connection (customer_support_agent role)."""
+    with _connect(DATABASE_URL) as conn:
+        yield conn
+
+
 def lookup_order(order_number: str) -> Optional[dict[str, Any]]:
-    with get_conn() as conn:
+    with get_read_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -53,7 +68,7 @@ def lookup_order(order_number: str) -> Optional[dict[str, Any]]:
 
 
 def lookup_customer(email: str) -> Optional[dict[str, Any]]:
-    with get_conn() as conn:
+    with get_read_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id, name, email FROM customers WHERE email = %s",
@@ -115,7 +130,7 @@ def _vec_literal(embedding: list[float]) -> str:
 def semantic_search_db(embedding: list[float], top_k: int = 3, threshold: float = 0.25) -> list[dict]:
     """Search knowledge base; sort in Python to avoid pooler ORDER BY quirks."""
     vec = _vec_literal(embedding)
-    with get_conn() as conn:
+    with get_read_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -143,15 +158,14 @@ def insert_refund_request(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO refund_requests (order_id, customer_id, amount, reason, status, approved_by)
-                VALUES (%s, %s, %s, %s, 'approved', %s)
+                SELECT insert_approved_refund(%s, %s, %s, %s, %s)
                 """,
                 (order_id, customer_id, amount, reason, approved_by),
             )
 
 
 def get_order_and_customer_ids(order_number: str, customer_email: str) -> tuple[Optional[str], Optional[str], Optional[float]]:
-    with get_conn() as conn:
+    with get_read_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
