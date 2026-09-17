@@ -56,8 +56,18 @@ def run_chat(message: str, thread_id: Optional[str] = None) -> dict[str, Any]:
     session = conv.get_session_by_thread(thread_id)
 
     try:
-        with langfuse_trace(thread_id, message) as config:
-            result = graph.invoke(_state_from_session(session, message), config)
+        with langfuse_trace(thread_id, message) as trace:
+            result = graph.invoke(_state_from_session(session, message), trace.config)
+            state_snapshot = graph.get_state(trace.config)
+            is_interrupted = bool(state_snapshot.next)
+            response_text = result.get("response", "")
+            trace.set_output(
+                {
+                    "response": response_text,
+                    "intent": result.get("intent"),
+                    "agent_status": "waiting_for_human" if is_interrupted else result.get("agent_status"),
+                }
+            )
     except Exception as e:
         return {
             "thread_id": thread_id,
@@ -69,10 +79,6 @@ def run_chat(message: str, thread_id: Optional[str] = None) -> dict[str, Any]:
         }
     finally:
         flush_langfuse()
-
-    state_snapshot = graph.get_state(config)
-    is_interrupted = bool(state_snapshot.next)
-    response_text = result.get("response", "")
 
     # Persist assistant response
     if response_text:
@@ -128,8 +134,14 @@ def resume_after_hitl(thread_id: str) -> dict[str, Any]:
         }
 
     try:
-        with langfuse_trace(thread_id, "hitl_resume") as trace_config:
-            result = graph.invoke(None, trace_config)
+        with langfuse_trace(thread_id, "hitl_resume") as trace:
+            result = graph.invoke(None, trace.config)
+            trace.set_output(
+                {
+                    "response": result.get("response", ""),
+                    "agent_status": result.get("agent_status"),
+                }
+            )
     except Exception as e:
         return {
             "thread_id": thread_id,
