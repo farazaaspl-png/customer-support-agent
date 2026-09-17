@@ -50,10 +50,11 @@ CORS_ORIGINS=http://localhost:5173
 # Frontend
 VITE_API_URL=http://localhost:8000
 
-# Langfuse (LLM tracing & token usage) — https://us.cloud.langfuse.com
+# Langfuse (LLM tracing & token usage) — https://cloud.langfuse.com
 LANGFUSE_SECRET_KEY=sk-lf-your-secret-key
 LANGFUSE_PUBLIC_KEY=pk-lf-your-public-key
-LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+LANGFUSE_TRACING_ENVIRONMENT=development
 LANGFUSE_ENABLED=true
 ```
 
@@ -276,9 +277,9 @@ Knowledge base topics: return policy, shipping, refunds, warranty, contact, orde
 
 LLM calls and token usage are traced automatically when Langfuse env vars are set.
 
-1. Add `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_BASE_URL` to `.env`
+1. Add `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_BASE_URL`, and optionally `LANGFUSE_TRACING_ENVIRONMENT` to `.env`
 2. Start the backend and send a chat message
-3. Open [Langfuse dashboard](https://us.cloud.langfuse.com) → **Traces**
+3. Open [Langfuse dashboard](https://cloud.langfuse.com) → **Traces** (filter by environment if needed)
 
 Each conversation `thread_id` is used as the Langfuse **session ID**, so you can group traces by chat session. Traces include:
 

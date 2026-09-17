@@ -66,6 +66,7 @@ cp .env.example .env
 #   SUPABASE_URL
 #   SUPABASE_SERVICE_ROLE_KEY
 #   SUPABASE_ANON_KEY
+#   LANGFUSE_SECRET_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_BASE_URL (optional tracing)
 ```
 
 ### 2. Set up Supabase database
