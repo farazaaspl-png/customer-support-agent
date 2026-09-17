@@ -1,6 +1,8 @@
 """Session API routes — list, load, and manage conversation history."""
 
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ai import conversation as conv
@@ -26,9 +28,9 @@ class MessageOut(BaseModel):
 
 
 @router.get("/sessions")
-async def list_sessions():
-    """List all past conversations, newest first."""
-    sessions = conv.list_sessions()
+async def list_sessions(user_id: Optional[str] = Query(None, description="Filter by app user")):
+    """List past conversations for a user, newest first."""
+    sessions = conv.list_sessions(user_id=user_id)
     return [
         {
             "id": str(s["id"]),
@@ -44,11 +46,16 @@ async def list_sessions():
 
 
 @router.get("/sessions/{thread_id}/messages")
-async def get_messages(thread_id: str):
+async def get_messages(
+    thread_id: str,
+    user_id: Optional[str] = Query(None, description="App user owning the session"),
+):
     """Load full message history for a conversation."""
     session = conv.get_session_by_thread(thread_id)
     if not session:
         raise HTTPException(404, "Session not found")
+    if user_id and session.get("user_id") and str(session["user_id"]) != user_id:
+        raise HTTPException(403, "Session not found")
 
     messages = conv.get_all_messages(session["id"])
     return {

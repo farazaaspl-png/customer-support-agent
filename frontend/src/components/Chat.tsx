@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AgentStatus, ChatResponse, Session } from "../api";
+import type { AgentStatus, AppUser, ChatResponse, Session } from "../api";
 import {
   approveRefund,
   listSessions,
@@ -11,7 +11,12 @@ import AgentStatusBadge from "./AgentStatus";
 import MessageList, { type Message } from "./MessageList";
 import SidePanel from "./SidePanel";
 
-export default function Chat() {
+interface ChatProps {
+  user: AppUser;
+  onLogout: () => void;
+}
+
+export default function Chat({ user, onLogout }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [input, setInput] = useState("");
@@ -26,14 +31,14 @@ export default function Chat() {
 
   const refreshSessions = useCallback(async () => {
     try {
-      const data = await listSessions();
+      const data = await listSessions(user.id);
       setSessions(data);
     } catch {
       /* ignore */
     } finally {
       setSessionsLoading(false);
     }
-  }, []);
+  }, [user.id]);
 
   useEffect(() => {
     refreshSessions();
@@ -59,7 +64,7 @@ export default function Chat() {
     if (id === threadId) return;
     setLoading(true);
     try {
-      const data = await loadSessionMessages(id);
+      const data = await loadSessionMessages(id, user.id);
       setThreadId(data.thread_id);
       setMessages(toMessages(data.messages));
       setAgentStatus("completed");
@@ -89,7 +94,7 @@ export default function Chat() {
     setAgentStatus("thinking");
 
     try {
-      const result = await sendMessage(text, threadId);
+      const result = await sendMessage(text, threadId, user.id);
       setThreadId(result.thread_id);
       setAgentStatus(result.agent_status);
       setIntent(result.intent);
@@ -109,7 +114,7 @@ export default function Chat() {
     setLoading(true);
     try {
       await approveRefund(threadId, approved);
-      const result = await resumeAfterHitl(threadId);
+      const result = await resumeAfterHitl(threadId, user.id);
       setAgentStatus(result.agent_status);
       setPendingRefund(undefined);
       addMessage(
@@ -138,8 +143,16 @@ export default function Chat() {
 
       <div className="chat-container">
         <header className="chat-header">
-          <h1>Acme Store Support</h1>
-          <AgentStatusBadge status={agentStatus} intent={intent} />
+          <div className="chat-header-title">
+            <h1>Acme Store Support</h1>
+            <span className="user-pill">{user.display_name}</span>
+          </div>
+          <div className="chat-header-actions">
+            <AgentStatusBadge status={agentStatus} intent={intent} />
+            <button type="button" className="btn-logout" onClick={onLogout}>
+              Log out
+            </button>
+          </div>
         </header>
 
         <MessageList messages={messages} />

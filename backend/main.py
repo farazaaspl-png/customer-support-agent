@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # Add project root so `ai` package is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from backend.routes import chat, hitl, sessions
+from backend.routes import auth, chat, hitl, sessions
 
 load_dotenv()
 
@@ -38,6 +38,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 app.include_router(hitl.router, prefix="/api/hitl", tags=["hitl"])

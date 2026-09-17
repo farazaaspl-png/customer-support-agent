@@ -18,7 +18,11 @@ from ai.db import get_conn
 # ---------------------------------------------------------------------------
 
 
-def get_or_create_session(thread_id: Optional[str] = None, first_message: str = "") -> dict[str, Any]:
+def get_or_create_session(
+    thread_id: Optional[str] = None,
+    first_message: str = "",
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
     """Get existing session by thread_id or create a new one."""
     thread_id = thread_id or str(uuid.uuid4())
     title = _title_from_message(first_message) if first_message else "New conversation"
@@ -28,31 +32,52 @@ def get_or_create_session(thread_id: Optional[str] = None, first_message: str = 
             cur.execute("SELECT * FROM chat_sessions WHERE thread_id = %s", (thread_id,))
             row = cur.fetchone()
             if row:
-                return dict(row)
+                session = dict(row)
+                if user_id and session.get("user_id") and str(session["user_id"]) != user_id:
+                    raise PermissionError("Session does not belong to this user")
+                if user_id and not session.get("user_id"):
+                    cur.execute(
+                        "UPDATE chat_sessions SET user_id = %s WHERE id = %s",
+                        (user_id, session["id"]),
+                    )
+                    session["user_id"] = user_id
+                return session
 
             cur.execute(
                 """
-                INSERT INTO chat_sessions (thread_id, title)
-                VALUES (%s, %s)
+                INSERT INTO chat_sessions (thread_id, title, user_id)
+                VALUES (%s, %s, %s)
                 RETURNING *
                 """,
-                (thread_id, title),
+                (thread_id, title, user_id),
             )
             return dict(cur.fetchone())
 
 
-def list_sessions(limit: int = 50) -> list[dict[str, Any]]:
+def list_sessions(user_id: Optional[str] = None, limit: int = 50) -> list[dict[str, Any]]:
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT id, thread_id, title, message_count, summary, created_at, updated_at
-                FROM chat_sessions
-                ORDER BY updated_at DESC
-                LIMIT %s
-                """,
-                (limit,),
-            )
+            if user_id:
+                cur.execute(
+                    """
+                    SELECT id, thread_id, title, message_count, summary, created_at, updated_at
+                    FROM chat_sessions
+                    WHERE user_id = %s
+                    ORDER BY updated_at DESC
+                    LIMIT %s
+                    """,
+                    (user_id, limit),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, thread_id, title, message_count, summary, created_at, updated_at
+                    FROM chat_sessions
+                    ORDER BY updated_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
             return [dict(r) for r in cur.fetchall()]
 
 

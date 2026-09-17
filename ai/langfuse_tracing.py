@@ -26,24 +26,36 @@ def get_langfuse_handler():
     return CallbackHandler()
 
 
-def _trace_metadata(thread_id: str) -> dict[str, Any]:
+def _trace_metadata(
+    thread_id: str,
+    user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "langfuse_session_id": thread_id,
         "thread_id": thread_id,
     }
     if LANGFUSE_TRACING_ENVIRONMENT:
         metadata["environment"] = LANGFUSE_TRACING_ENVIRONMENT
+    if user_id:
+        metadata["user_id"] = user_id
+    if user_email:
+        metadata["user_email"] = user_email
     return metadata
 
 
-def build_run_config(thread_id: str) -> dict[str, Any]:
+def build_run_config(
+    thread_id: str,
+    user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> dict[str, Any]:
     """Build LangGraph RunnableConfig with Langfuse callbacks and session metadata."""
     config: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
 
     handler = get_langfuse_handler()
     if handler:
         config["callbacks"] = [handler]
-        config["metadata"] = _trace_metadata(thread_id)
+        config["metadata"] = _trace_metadata(thread_id, user_id, user_email)
 
     return config
 
@@ -62,13 +74,16 @@ class LangfuseRunContext:
 
 @contextmanager
 def langfuse_trace(
-    thread_id: str, user_message: str = ""
+    thread_id: str,
+    user_message: str = "",
+    user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
 ) -> Generator[LangfuseRunContext, None, None]:
     """
-    Wrap a graph run in a Langfuse span with session propagation.
+    Wrap a graph run in a Langfuse span with session + user propagation.
     Yields LangfuseRunContext; pass `.config` to graph.invoke().
     """
-    config = build_run_config(thread_id)
+    config = build_run_config(thread_id, user_id=user_id, user_email=user_email)
     run = LangfuseRunContext(config=config)
 
     if not is_langfuse_enabled():
@@ -81,14 +96,20 @@ def langfuse_trace(
     propagation_kwargs: dict[str, Any] = {"session_id": thread_id}
     if LANGFUSE_TRACING_ENVIRONMENT:
         propagation_kwargs["environment"] = LANGFUSE_TRACING_ENVIRONMENT
+    if user_id:
+        propagation_kwargs["user_id"] = user_id
+
+    trace_input: dict[str, Any] = {"message": user_message, "thread_id": thread_id}
+    if user_email:
+        trace_input["user_email"] = user_email
+    if user_id:
+        trace_input["user_id"] = user_id
 
     with langfuse.start_as_current_observation(
         as_type="span", name="customer-support-chat"
     ) as span:
         run._span = span
-        span.set_trace_io(
-            input={"message": user_message, "thread_id": thread_id},
-        )
+        span.set_trace_io(input=trace_input)
         with propagate_attributes(**propagation_kwargs):
             yield run
 

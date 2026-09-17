@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage
 
 from ai import conversation as conv
 from ai.graph import get_graph
+from ai import users as app_users
 from ai.langfuse_tracing import build_run_config, flush_langfuse, langfuse_trace
 from ai.state import AgentState
 
@@ -34,17 +35,54 @@ def _state_from_session(session: dict, new_message: str) -> dict:
     }
 
 
-def _config(thread_id: str) -> dict:
-    return build_run_config(thread_id)
+def _user_trace_context(user_id: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    if not user_id:
+        return None, None
+    row = app_users.get_user_by_id(user_id)
+    if not row:
+        return user_id, None
+    return str(row["id"]), row["email"]
 
 
-def run_chat(message: str, thread_id: Optional[str] = None) -> dict[str, Any]:
+def _config(
+    thread_id: str,
+    user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> dict:
+    return build_run_config(thread_id, user_id=user_id, user_email=user_email)
+
+
+def _trace_user_for_thread(thread_id: str) -> tuple[Optional[str], Optional[str]]:
+    session = conv.get_session_by_thread(thread_id)
+    if not session or not session.get("user_id"):
+        return None, None
+    return _user_trace_context(str(session["user_id"]))
+
+
+def run_chat(
+    message: str,
+    thread_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
     """
     Run the agent graph for a user message.
     Persists messages to DB and uses context window management for long chats.
     """
     graph = get_graph()
-    session = conv.get_or_create_session(thread_id, first_message=message)
+    trace_user_id, user_email = _user_trace_context(user_id)
+    try:
+        session = conv.get_or_create_session(
+            thread_id, first_message=message, user_id=trace_user_id
+        )
+    except PermissionError:
+        return {
+            "thread_id": thread_id or "",
+            "response": "This conversation belongs to another user.",
+            "agent_status": "error",
+            "pending_refund": None,
+            "intent": None,
+            "title": None,
+        }
     thread_id = session["thread_id"]
 
     # Persist user message
@@ -56,7 +94,9 @@ def run_chat(message: str, thread_id: Optional[str] = None) -> dict[str, Any]:
     session = conv.get_session_by_thread(thread_id)
 
     try:
-        with langfuse_trace(thread_id, message) as trace:
+        with langfuse_trace(
+            thread_id, message, user_id=trace_user_id, user_email=user_email
+        ) as trace:
             result = graph.invoke(_state_from_session(session, message), trace.config)
             state_snapshot = graph.get_state(trace.config)
             is_interrupted = bool(state_snapshot.next)
@@ -120,10 +160,11 @@ def approve_refund(thread_id: str, approved: bool, approved_by: str = "human_age
     }
 
 
-def resume_after_hitl(thread_id: str) -> dict[str, Any]:
+def resume_after_hitl(thread_id: str, user_id: Optional[str] = None) -> dict[str, Any]:
     """Resume the graph after human approval/rejection."""
     graph = get_graph()
-    config = _config(thread_id)
+    trace_user_id, user_email = _user_trace_context(user_id) if user_id else _trace_user_for_thread(thread_id)
+    config = _config(thread_id, trace_user_id, user_email)
 
     state_snapshot = graph.get_state(config)
     if not state_snapshot.next:
@@ -134,7 +175,12 @@ def resume_after_hitl(thread_id: str) -> dict[str, Any]:
         }
 
     try:
-        with langfuse_trace(thread_id, "hitl_resume") as trace:
+        with langfuse_trace(
+            thread_id,
+            "hitl_resume",
+            user_id=trace_user_id,
+            user_email=user_email,
+        ) as trace:
             result = graph.invoke(None, trace.config)
             trace.set_output(
                 {

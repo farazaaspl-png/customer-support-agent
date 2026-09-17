@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/api.ts","./src/main.tsx","./src/vite-env.d.ts","./src/components/AgentStatus.tsx","./src/components/Chat.tsx","./src/components/MessageList.tsx"],"version":"5.9.3"}
+{"root":["./src/App.tsx","./src/api.ts","./src/main.tsx","./src/vite-env.d.ts","./src/components/AgentStatus.tsx","./src/components/Auth.tsx","./src/components/Chat.tsx","./src/components/MessageList.tsx","./src/components/SidePanel.tsx"],"version":"5.9.3"}
