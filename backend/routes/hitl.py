@@ -16,6 +16,7 @@ class HITLApproveRequest(BaseModel):
 
 class HITLResumeRequest(BaseModel):
     thread_id: str
+    user_id: str | None = None
 
 
 @router.post("/approve")
@@ -30,4 +31,4 @@ async def hitl_approve(request: HITLApproveRequest):
 @router.post("/resume")
 async def hitl_resume(request: HITLResumeRequest):
     """Resume the agent graph after HITL approval/rejection."""
-    return resume_after_hitl(request.thread_id)
+    return resume_after_hitl(request.thread_id, request.user_id)

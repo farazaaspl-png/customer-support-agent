@@ -13,6 +13,7 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="User message")
     thread_id: Optional[str] = Field(None, description="Conversation thread ID for memory")
+    user_id: Optional[str] = Field(None, description="Logged-in app user ID (Langfuse user_id)")
 
 
 class ChatResponse(BaseModel):
@@ -27,7 +28,7 @@ class ChatResponse(BaseModel):
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Send a message to the customer support agent."""
-    result = run_chat(request.message, request.thread_id)
+    result = run_chat(request.message, request.thread_id, request.user_id)
     return ChatResponse(**{k: result[k] for k in ChatResponse.model_fields})
 
 

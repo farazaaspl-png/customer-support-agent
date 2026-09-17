@@ -32,6 +32,9 @@ CHAT_MODEL = "gpt-4o-mini"
 
 MAX_RETRIES = 3
 
+# Demo app login (no JWT) — all users share this password
+APP_STATIC_PASSWORD = os.getenv("APP_STATIC_PASSWORD", "pass@123")
+
 # Postgres schema for all app tables
 DB_SCHEMA = os.getenv("DB_SCHEMA", "customer_support_agent")
 
