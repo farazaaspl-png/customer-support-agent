@@ -22,7 +22,7 @@ def create_user(email: str, display_name: str) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO app_users (email, display_name)
+                INSERT INTO users (email, display_name)
                 VALUES (%s, %s)
                 RETURNING id, email, display_name, created_at
                 """,
@@ -37,7 +37,7 @@ def get_user_by_email(email: str) -> Optional[dict[str, Any]]:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, email, display_name, created_at FROM app_users WHERE email = %s",
+                "SELECT id, email, display_name, created_at FROM users WHERE email = %s",
                 (email,),
             )
             row = cur.fetchone()
@@ -48,7 +48,7 @@ def get_user_by_id(user_id: str) -> Optional[dict[str, Any]]:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, email, display_name, created_at FROM app_users WHERE id = %s",
+                "SELECT id, email, display_name, created_at FROM users WHERE id = %s",
                 (user_id,),
             )
             row = cur.fetchone()
